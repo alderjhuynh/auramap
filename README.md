@@ -23,6 +23,7 @@ A lightweight, client-side world map, focused on being fast, readable, and unobt
 - **Separate map for every world and dimension**: Overworld, Nether, and End each keep their own data, and single-player worlds and servers are kept apart. Maps are saved under `aura/auramap/`
 - **Fast and non-intrusive saves**: Uses a compact binary format that saves in the background without the long freeze on leaving a world.
 - **Map that actually looks like terrain**: Block colors, heightmap, and an attempt at looking like vanilla maps.
+- **Minimap taken directly from the worldmap**
 ### Planned
 
-- **Minimap overlay, waypoints, and cave view**
+- **waypoints and cave view**

@@ -4,18 +4,24 @@ import com.auramap.AuraMap;
 import com.auramap.client.config.AuraMapConfig;
 import com.auramap.client.gui.WorldMapScreen;
 import com.auramap.client.input.MapKeybindings;
+import com.auramap.client.minimap.MinimapDataStore;
+import com.auramap.client.render.MinimapRenderer;
 import com.auramap.client.storage.RegionFileStorage;
 import com.auramap.client.world.DimensionContext;
 import com.auramap.client.world.MapUpdateQueue;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.Minecraft;
 
 public class AuraMapClient implements ClientModInitializer {
     public static AuraMapConfig CONFIG;
     public static final MapUpdateQueue UPDATE_QUEUE = new MapUpdateQueue();
     private static RegionFileStorage currentStorage;
+    private static final MinimapDataStore MINIMAP_STORE = new MinimapDataStore();
+    private static final MinimapRenderer MINIMAP_RENDERER = new MinimapRenderer();
     private int sampleCursor = 0;
 
     @Override
@@ -24,6 +30,9 @@ public class AuraMapClient implements ClientModInitializer {
         for (var kb : MapKeybindings.all()) {
             KeyMappingHelper.registerKeyMapping(kb);
         }
+        HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, AuraMap.id("minimap"),
+                MINIMAP_RENDERER);
+        UPDATE_QUEUE.setMinimapStore(MINIMAP_STORE);
         ClientTickEvents.END_CLIENT_TICK.register(this::onEndTick);
         AuraMap.LOGGER.info("[auramap] client init");
     }
@@ -33,12 +42,17 @@ public class AuraMapClient implements ClientModInitializer {
             if (currentStorage != null) {
                 UPDATE_QUEUE.flushAsyncForced();
                 currentStorage = null;
+                MINIMAP_STORE.clear();
+                MINIMAP_RENDERER.close();
             }
             return;
         }
         if (currentStorage == null || !isStorageCurrent(mc)) {
             currentStorage = DimensionContext.storageFor(mc.level);
             UPDATE_QUEUE.setStorage(currentStorage);
+            UPDATE_QUEUE.setMinimapStore(MINIMAP_STORE);
+            MINIMAP_STORE.clear();
+            MINIMAP_RENDERER.close();
         }
         while (MapKeybindings.OPEN_MAP.consumeClick()) {
             openMap(mc);
@@ -101,4 +115,5 @@ public class AuraMapClient implements ClientModInitializer {
     }
 
     public static RegionFileStorage currentStorage() { return currentStorage; }
+    public static MinimapDataStore minimapStore() { return MINIMAP_STORE; }
 }

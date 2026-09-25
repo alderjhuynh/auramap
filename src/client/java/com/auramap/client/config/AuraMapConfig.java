@@ -25,9 +25,12 @@ public final class AuraMapConfig {
     public double waypointsScale = 1.0;
     public float caveToggleSeconds = 1.0f;
     public int mapWritingDistance = -1;
-    public boolean openingAnimation = true;
+    public boolean openingAnimation = false;
     public boolean displayZoom = true;
     public boolean minimapRadar = true;
+    public boolean minimapEnabled = true;
+    public int minimapSize = 128;
+    public double minimapZoom = 1.0;
 
     private transient Path file;
 
@@ -45,6 +48,8 @@ public final class AuraMapConfig {
                     loaded.caveModeDepth = clamp(loaded.caveModeDepth, 1, 64);
                     loaded.caveToggleSeconds = clamp(loaded.caveToggleSeconds, 0f, 10f);
                     loaded.waypointsScale = clamp(loaded.waypointsScale, 0.5, 5.0);
+                    loaded.minimapSize = clamp(loaded.minimapSize, 64, 256);
+                    loaded.minimapZoom = clamp(loaded.minimapZoom, 0.25, 8.0);
                     return loaded;
                 }
             } catch (IOException e) {

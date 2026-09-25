@@ -1,6 +1,7 @@
 package com.auramap.client.world;
 
 import com.auramap.AuraMap;
+import com.auramap.client.minimap.MinimapDataStore;
 import com.auramap.client.storage.RegionFileStorage;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -31,6 +32,7 @@ public final class MapUpdateQueue {
     });
 
     private volatile RegionFileStorage storage;
+    private volatile MinimapDataStore minimapStore;
     private volatile boolean closed;
 
     private final Map<Long, long[]> pendingDirty = new ConcurrentHashMap<>();
@@ -46,6 +48,11 @@ public final class MapUpdateQueue {
             });
         }
         this.storage = s;
+        pendingDirty.clear();
+    }
+
+    public void setMinimapStore(MinimapDataStore minimapStore) {
+        this.minimapStore = minimapStore;
         pendingDirty.clear();
     }
 
@@ -103,6 +110,7 @@ public final class MapUpdateQueue {
             }
             pendingDirty.remove(key);
             final RegionFileStorage fs = s;
+            final MinimapDataStore mm = minimapStore;
             writer.execute(() -> {
                 try {
                     var tile = ChunkSnapshotter.snapshot(lc);
@@ -116,6 +124,7 @@ public final class MapUpdateQueue {
                     if (lastPixels.size() > LAST_CAP) lastPixels.clear();
                     lastPixels.put(key, tile.pixels().clone());
                     fs.putChunkTile(tile.chunkX(), tile.chunkZ(), tile.pixels());
+                    if (mm != null) mm.putChunkTile(tile.chunkX(), tile.chunkZ(), tile.pixels());
                 } catch (Exception e) {
                     AuraMap.LOGGER.warn("[auramap] snapshot failed for chunk {},{}", cx, cz, e);
                 }

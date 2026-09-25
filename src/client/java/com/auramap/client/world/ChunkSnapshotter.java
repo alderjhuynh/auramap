@@ -5,6 +5,7 @@ import com.auramap.client.util.ColorUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.MapColor;
 
@@ -88,20 +89,23 @@ public final class ChunkSnapshotter {
 
                 int muted = ColorUtil.desaturate(base, 0.18f);
 
-                boolean needsPos = (doBiomeBlend && isVegetation(base)) || doLighting;
+                boolean needsPos = doBiomeBlend || doLighting;
                 BlockPos p = null;
+                BlockState surfaceState = null;
                 if (needsPos) {
                     mutable.set(baseBlockX + x, h, baseBlockZ + z);
                     p = mutable;
+                    if (doBiomeBlend) {
+                        surfaceState = chunk.getBlockState(p);
+                    }
                 }
 
-                if (doBiomeBlend && p != null) {
-                    boolean vegetative = isVegetation(base);
-                    if (vegetative) {
+                if (doBiomeBlend && p != null && surfaceState != null) {
+                    int kind = tintKind(surfaceState);
+                    if (kind != NO_TINT) {
                         var biome = level.getBiome(p).value();
                         int tint;
-                        var state = chunk.getBlockState(p);
-                        if (state.is(Blocks.GRASS_BLOCK) || state.is(Blocks.SHORT_GRASS) || state.is(Blocks.FERN)) {
+                        if (kind == GRASS_TINT) {
                             tint = biome.getGrassColor(p.getX(), p.getZ());
                         } else {
                             tint = biome.getFoliageColor();
@@ -168,10 +172,24 @@ public final class ChunkSnapshotter {
         return new ChunkTile(cx, cz, out.clone(), globalMin, globalMax);
     }
 
-    private static boolean isVegetation(int rgb) {
-        int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+    private static final int NO_TINT = 0;
+    private static final int GRASS_TINT = 1;
+    private static final int FOLIAGE_TINT = 2;
 
-        return g > r * 0.85f && g > b && g > 90;
+    /**
+     * Decide whether a surface block should get a biome tint, and which kind.
+     * Must be based on the actual block, never on RGB: sand/sandstone are
+     * yellowish-green in RGB and a color heuristic misclassifies them as
+     * vegetation, tinting beaches green and deserts brown.
+     */
+    private static int tintKind(BlockState state) {
+        if (state.is(Blocks.GRASS_BLOCK)) return GRASS_TINT;
+        if (state.is(Blocks.SHORT_GRASS) || state.is(Blocks.TALL_GRASS)
+                || state.is(Blocks.FERN) || state.is(Blocks.LARGE_FERN)
+                || state.is(Blocks.SUGAR_CANE)) return GRASS_TINT;
+        if (state.is(net.minecraft.tags.BlockTags.LEAVES)
+                || state.is(Blocks.VINE)) return FOLIAGE_TINT;
+        return NO_TINT;
     }
 
     private static int neighborHeight(net.minecraft.world.level.Level level,
