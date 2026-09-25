@@ -21,6 +21,10 @@ public final class ChunkSnapshotter {
     private static final ThreadLocal<boolean[]> TRANSPARENT = ThreadLocal.withInitial(() -> new boolean[CHUNK_SIZE * CHUNK_SIZE]);
     private static final ThreadLocal<BlockPos.MutableBlockPos> MUTABLE = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
     private static final ThreadLocal<MapColorSampler.FastOut> FAST_OUT = ThreadLocal.withInitial(MapColorSampler.FastOut::new);
+    private static final ThreadLocal<BlockPos.MutableBlockPos> NEIGHBOR_MUTABLE =
+            ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
+    private static final ThreadLocal<MapColorSampler.FastOut> NEIGHBOR_FAST =
+            ThreadLocal.withInitial(MapColorSampler.FastOut::new);
 
     public static ChunkTile snapshot(LevelChunk chunk) {
         int cx = chunk.getPos().x();
@@ -132,8 +136,23 @@ public final class ChunkSnapshotter {
                 }
 
                 if (slopeMode > 0) {
-                    int northH = (z > 0) ? heights[idx - CHUNK_SIZE] : h;
-                    int diagH = (x > 0 && z > 0) ? heights[idx - CHUNK_SIZE - 1] : northH;
+                    int northH;
+                    if (z > 0) {
+                        northH = heights[idx - CHUNK_SIZE];
+                    } else {
+                        northH = neighborHeight(level, baseBlockX + x, baseBlockZ - 1,
+                                minY, maxY, h);
+                    }
+                    int diagH;
+                    if (x > 0 && z > 0) {
+                        diagH = heights[idx - CHUNK_SIZE - 1];
+                    } else if (z > 0) {
+                        diagH = neighborHeight(level, baseBlockX - 1, baseBlockZ + z - 1,
+                                minY, maxY, northH);
+                    } else {
+                        diagH = neighborHeight(level, baseBlockX + x - 1, baseBlockZ - 1,
+                                minY, maxY, northH);
+                    }
                     int vSlope = h - northH;
                     int dSlope = h - diagH;
 
@@ -153,5 +172,34 @@ public final class ChunkSnapshotter {
         int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
 
         return g > r * 0.85f && g > b && g > 90;
+    }
+
+    private static int neighborHeight(net.minecraft.world.level.Level level,
+            int blockX, int blockZ, int minY, int maxY, int fallback) {
+        try {
+            int ncx = Math.floorDiv(blockX, CHUNK_SIZE);
+            int ncz = Math.floorDiv(blockZ, CHUNK_SIZE);
+            var access = level.getChunkSource().getChunk(ncx, ncz, false);
+            if (!(access instanceof LevelChunk nchunk)) return fallback;
+            int lx = Math.floorMod(blockX, CHUNK_SIZE);
+            int lz = Math.floorMod(blockZ, CHUNK_SIZE);
+            int mapped;
+            try {
+                mapped = nchunk.getHeight(
+                        net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, lx, lz);
+            } catch (Exception e) {
+                return fallback;
+            }
+            int startY = mapped < minY
+                    ? MapColorSampler.sectionBasedHeight(nchunk, 64)
+                    : Math.min(mapped, maxY);
+            var m = NEIGHBOR_MUTABLE.get();
+            var f = NEIGHBOR_FAST.get();
+            boolean found = MapColorSampler.scanFast(nchunk, lx, lz, startY, minY, m, f);
+            if (!found) return minY;
+            return f.height;
+        } catch (Exception e) {
+            return fallback;
+        }
     }
 }

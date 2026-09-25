@@ -106,6 +106,10 @@ public class WorldMapScreen extends Screen {
                 int ih = iz1 - iz0;
                 if (iw <= 0 || ih <= 0) continue;
                 if (ix0 + iw < 0 || iz0 + ih < 0 || ix0 > width || iz0 > height) continue;
+                if (texId == null) {
+                    g.fill(ix0, iz0, ix0 + iw, iz0 + ih, 0xFF14181D);
+                    continue;
+                }
                 try {
                     g.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, texId,
                             ix0, iz0, 0f, 0f, iw, ih, 512, 512, 512, 512);

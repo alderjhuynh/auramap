@@ -37,17 +37,16 @@ public final class MapTextureCache {
     }
 
     public Identifier getOrUpload(RegionPos pos) {
-        long currentFrame = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0;
         Entry e = entries.get(pos);
         MapRegionData data = storage.getIfCached(pos);
         if (data == null) {
             requestLoadAsync(pos);
             if (e != null) return e.id;
-            return placeholderId();
+            return null;
         }
         if (e == null) {
             if (fullUploadsThisFrame >= MAX_FULL_UPLOADS_PER_FRAME) {
-                return placeholderId();
+                return null;
             }
             fullUploadsThisFrame++;
             DynamicTexture tex = createTexture(data.pixels());
@@ -55,23 +54,24 @@ public final class MapTextureCache {
             Minecraft.getInstance().getTextureManager().register(id, tex);
             e = new Entry(tex, id);
             entries.put(pos, e);
-            data.clearDirty();
+            data.clearTextureTiles();
             return e.id;
         }
-        if (data.isDirty()) {
-            BitSet tiles = data.consumeDirtyTiles();
-            if (tiles != null && tiles.cardinality() < 256) {
-                if (tileUploadsThisFrame < MAX_TILE_UPLOADS_PER_FRAME) {
-                    tileUploadsThisFrame++;
-                    updateTiles(e.texture, data.pixels(), tiles);
-                    data.clearDirty();
-                }
-            } else {
-                if (fullUploadsThisFrame < MAX_FULL_UPLOADS_PER_FRAME) {
-                    fullUploadsThisFrame++;
-                    updateTexture(e.texture, data.pixels());
-                    data.clearDirty();
-                }
+        BitSet peek = data.peekDirtyTiles();
+        boolean needsFull = data.isDirty() && peek == null;
+        boolean needsTiles = peek != null && peek.cardinality() < 256;
+        boolean needsFullTiles = peek != null && !needsTiles;
+        if (needsTiles) {
+            if (tileUploadsThisFrame < MAX_TILE_UPLOADS_PER_FRAME) {
+                tileUploadsThisFrame++;
+                BitSet tiles = data.consumeDirtyTiles();
+                if (tiles != null) updateTiles(e.texture, data.pixels(), tiles);
+            }
+        } else if (needsFull || needsFullTiles) {
+            if (fullUploadsThisFrame < MAX_FULL_UPLOADS_PER_FRAME) {
+                fullUploadsThisFrame++;
+                data.consumeDirtyTiles();
+                updateTexture(e.texture, data.pixels());
             }
         }
         return e.id;
@@ -87,7 +87,7 @@ public final class MapTextureCache {
         synchronized (pendingLoad) {
             if (!pendingLoad.add(pos)) return;
         }
-        new Thread(() -> {
+        Thread t = new Thread(() -> {
             try {
                 storage.getOrLoad(pos);
             } finally {
@@ -95,11 +95,9 @@ public final class MapTextureCache {
                     pendingLoad.remove(pos);
                 }
             }
-        }, "auramap-region-loader").start();
-    }
-
-    private Identifier placeholderId() {
-        return AuraMap.id("map/placeholder");
+        }, "auramap-region-loader");
+        t.setDaemon(true);
+        t.start();
     }
 
     public void close() {

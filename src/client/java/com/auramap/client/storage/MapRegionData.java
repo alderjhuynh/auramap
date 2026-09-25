@@ -25,6 +25,13 @@ public final class MapRegionData {
     public boolean isDirty() { return dirty; }
     public void markDirty() { dirty = true; }
     public void clearDirty() { dirty = false; dirtyTiles.clear(); }
+    public void clearSaveFlag() { dirty = false; }
+    public void clearTextureTiles() { dirtyTiles.clear(); }
+
+    public BitSet peekDirtyTiles() {
+        if (dirtyTiles.isEmpty()) return null;
+        return (BitSet) dirtyTiles.clone();
+    }
 
     public BitSet consumeDirtyTiles() {
         if (dirtyTiles.isEmpty()) return null;

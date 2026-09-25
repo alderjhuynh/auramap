@@ -25,7 +25,7 @@ public class AuraMapClient implements ClientModInitializer {
             KeyMappingHelper.registerKeyMapping(kb);
         }
         ClientTickEvents.END_CLIENT_TICK.register(this::onEndTick);
-        AuraMap.LOGGER.info("[auramap] client init — press M to open map");
+        AuraMap.LOGGER.info("[auramap] client init");
     }
 
     private void onEndTick(Minecraft mc) {
@@ -45,6 +45,14 @@ public class AuraMapClient implements ClientModInitializer {
         }
         if (mc.level != null && mc.level.getGameTime() % 4 == 0) {
             sampleNearbyChunksThrottled(mc, 8);
+        }
+        if (mc.level != null && mc.player != null && currentStorage != null) {
+            int pcx = mc.player.chunkPosition().x();
+            int pcz = mc.player.chunkPosition().z();
+            int radius = mc.options.getEffectiveRenderDistance();
+            radius = Math.max(4, Math.min(radius, 16));
+            if (CONFIG.mapWritingDistance >= 0) radius = Math.min(radius, CONFIG.mapWritingDistance);
+            UPDATE_QUEUE.drainWithBudget(mc.level, pcx, pcz, radius);
         }
     }
 

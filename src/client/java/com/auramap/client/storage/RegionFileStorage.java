@@ -86,7 +86,7 @@ public final class RegionFileStorage {
         for (Map.Entry<RegionPos, MapRegionData> e : cache.entrySet()) {
             if (e.getValue().isDirty()) {
                 saveToDisk(e.getValue());
-                e.getValue().clearDirty();
+                e.getValue().clearSaveFlag();
             }
         }
         lastFlushMs = System.currentTimeMillis();
@@ -94,7 +94,7 @@ public final class RegionFileStorage {
 
     public void flushRegion(RegionPos pos) {
         MapRegionData d = cache.get(pos);
-        if (d != null && d.isDirty()) { saveToDisk(d); d.clearDirty(); }
+        if (d != null && d.isDirty()) { saveToDisk(d); d.clearSaveFlag(); }
     }
 
     private Path binPath(RegionPos pos) { return dimRoot.resolve("r." + pos.rx() + "." + pos.rz() + ".bin"); }
