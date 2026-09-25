@@ -1,0 +1,128 @@
+package com.auramap.client.render;
+
+import com.auramap.AuraMap;
+import com.auramap.client.storage.MapRegionData;
+import com.auramap.client.storage.RegionFileStorage;
+import com.auramap.client.storage.RegionPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.Identifier;
+import com.mojang.blaze3d.platform.NativeImage;
+
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
+
+public final class MapTextureCache {
+    private final RegionFileStorage storage;
+    private final Map<RegionPos, Entry> entries = new HashMap<>();
+
+    private static class Entry {
+        final DynamicTexture texture;
+        final Identifier id;
+        Entry(DynamicTexture t, Identifier id) { this.texture = t; this.id = id; }
+    }
+
+    public MapTextureCache(RegionFileStorage storage) {
+        this.storage = storage;
+    }
+
+    public Identifier getOrUpload(RegionPos pos) {
+        Entry e = entries.get(pos);
+        MapRegionData data = storage.getOrLoad(pos);
+        if (e == null) {
+            DynamicTexture tex = createTexture(data.pixels());
+            Identifier id = AuraMap.id("map/r_" + pos.rx() + "_" + pos.rz());
+            Minecraft.getInstance().getTextureManager().register(id, tex);
+            e = new Entry(tex, id);
+            entries.put(pos, e);
+            data.clearDirty();
+            return e.id;
+        }
+        if (data.isDirty()) {
+            BitSet tiles = data.consumeDirtyTiles();
+
+            if (tiles != null && tiles.cardinality() < 256) {
+                updateTiles(e.texture, data.pixels(), tiles);
+            } else {
+
+                updateTexture(e.texture, data.pixels());
+            }
+
+            data.clearDirty();
+        }
+        return e.id;
+    }
+
+    public void close() {
+        var tm = Minecraft.getInstance().getTextureManager();
+        for (Entry e : entries.values()) {
+            try { tm.release(e.id); } catch (Exception ignored) {}
+            try { e.texture.close(); } catch (Exception ignored) {}
+        }
+        entries.clear();
+    }
+
+    private static DynamicTexture createTexture(int[] pixels) {
+        int size = RegionPos.REGION_PIXEL_SIZE;
+        NativeImage img = new NativeImage(size, size, false);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                img.setPixelABGR(x, y, abgrFromArgb(pixels[y * size + x]));
+            }
+        }
+        return new DynamicTexture(() -> "auramap region", img);
+    }
+
+    private static void updateTiles(DynamicTexture tex, int[] pixels, BitSet tiles) {
+        try {
+            NativeImage img = tex.getPixels();
+            if (img == null) return;
+            int stride = RegionPos.REGION_PIXEL_SIZE;
+            int tileSize = 16;
+            int tilesPerRow = RegionPos.REGION_CHUNK_SIZE;
+            for (int idx = tiles.nextSetBit(0); idx >= 0; idx = tiles.nextSetBit(idx + 1)) {
+                int tx = idx % tilesPerRow;
+                int tz = idx / tilesPerRow;
+                int basePx = tx * tileSize;
+                int basePz = tz * tileSize;
+                for (int dy = 0; dy < tileSize; dy++) {
+                    int py = basePz + dy;
+                    int srcRow = py * stride + basePx;
+                    for (int dx = 0; dx < tileSize; dx++) {
+                        int px = basePx + dx;
+                        int argb = pixels[srcRow + dx];
+                        img.setPixelABGR(px, py, abgrFromArgb(argb));
+                    }
+                }
+            }
+            tex.upload();
+        } catch (Exception e) {
+            AuraMap.LOGGER.warn("[auramap] tile update failed", e);
+        }
+    }
+
+    private static void updateTexture(DynamicTexture tex, int[] pixels) {
+        try {
+            NativeImage img = tex.getPixels();
+            if (img == null) return;
+            int size = RegionPos.REGION_PIXEL_SIZE;
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) {
+                    img.setPixelABGR(x, y, abgrFromArgb(pixels[y * size + x]));
+                }
+            }
+            tex.upload();
+        } catch (Exception e) {
+            AuraMap.LOGGER.warn("[auramap] texture update failed", e);
+        }
+    }
+
+    private static int abgrFromArgb(int argb) {
+        int a = (argb >> 24) & 0xFF;
+        int r = (argb >> 16) & 0xFF;
+        int g = (argb >> 8) & 0xFF;
+        int b = argb & 0xFF;
+        return (a << 24) | (b << 16) | (g << 8) | r;
+    }
+}

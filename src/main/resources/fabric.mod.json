@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "auramap",
+	"version": "${version}",
+	"name": "AuraMap",
+	"description": "Lightweight clientside map",
+	"authors": ["auraea"],
+	"license": "WTFPL",
+	"icon": "assets/auramap/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"main": ["com.auramap.AuraMap"],
+		"client": ["com.auramap.client.AuraMapClient"]
+	},
+	"mixins": [
+		"auramap.mixins.json",
+		{
+			"config": "auramap.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
