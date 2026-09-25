@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AuraMap Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div id="landing">
+  <div class="card">
+    <h1>AuraMap Viewer</h1>
+    <p class="sub">Load a world's map cache to see the terrain it has recorded so far. Grab the folder under <code class="mono">aura/auramap/&lt;world&gt;/&lt;dimension&gt;/</code> in your game directory.</p>
+
+    <div id="drop">
+      <p>Drag a folder here, or choose one</p>
+      <button class="btn primary" id="pickBtn" type="button">Choose folder&hellip;</button>
+      <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+    </div>
+
+    <div id="status" role="status"></div>
+    <div id="groups"></div>
+  </div>
+</div>
+
+<div id="viewer">
+  <canvas id="mapCanvas"></canvas>
+
+  <div class="overlay" id="topbar">
+    <div class="chip title">
+      <b>AuraMap</b><span class="dim" id="groupLabel"></span>
+    </div>
+    <div class="right">
+      <label class="chip" id="wpToggleWrap" style="display:none; cursor:pointer; align-items:center; gap:6px; pointer-events:auto;">
+        <input type="checkbox" id="wpToggle" checked style="pointer-events:auto;"> waypoints
+      </label>
+      <button class="icon-btn" id="fitBtn" title="Fit to explored area">&#9678;</button>
+      <button class="icon-btn" id="reloadBtn" title="Load a different folder">&#8617;</button>
+    </div>
+  </div>
+
+  <div class="overlay chip mono" id="coordReadout">x <span id="cx">0</span> z <span id="cz">0</span></div>
+
+  <div class="overlay" id="zoomCluster">
+    <div class="chip mono" id="zoomReadout">1.00x</div>
+    <div id="zoomBtns">
+      <button class="icon-btn" id="zoomOutBtn">&minus;</button>
+      <button class="icon-btn" id="zoomInBtn">+</button>
+    </div>
+  </div>
+  <div id="tooltip" class="mono"></div>
+</div>
+
+<script src="./app.js" defer></script>
+</body>
+</html>
