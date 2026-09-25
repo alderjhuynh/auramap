@@ -59,9 +59,7 @@ public class AuraMapClient implements ClientModInitializer {
         int pcx = mc.player.chunkPosition().x();
         int pcz = mc.player.chunkPosition().z();
         int radius = mc.options.getEffectiveRenderDistance();
-
         radius = Math.max(4, Math.min(radius, 16));
-
         if (CONFIG.mapWritingDistance >= 0) radius = Math.min(radius, CONFIG.mapWritingDistance);
         int diameter = radius * 2 + 1;
         int total = diameter * diameter;

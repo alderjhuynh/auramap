@@ -27,8 +27,6 @@ public final class AuraMapConfig {
     public int mapWritingDistance = -1;
     public boolean openingAnimation = true;
     public boolean displayZoom = true;
-    public boolean arrow = true;
-    public int arrowColor = -2;
     public boolean minimapRadar = true;
 
     private transient Path file;

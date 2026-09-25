@@ -15,17 +15,25 @@ public final class ChunkSnapshotter {
 
     public record ChunkTile(int chunkX, int chunkZ, int[] pixels, int minHeight, int maxHeight) {}
 
+    private static final ThreadLocal<int[]> RAW_RGB = ThreadLocal.withInitial(() -> new int[CHUNK_SIZE * CHUNK_SIZE]);
+    private static final ThreadLocal<int[]> HEIGHTS = ThreadLocal.withInitial(() -> new int[CHUNK_SIZE * CHUNK_SIZE]);
+    private static final ThreadLocal<int[]> OUT = ThreadLocal.withInitial(() -> new int[CHUNK_SIZE * CHUNK_SIZE]);
+    private static final ThreadLocal<boolean[]> TRANSPARENT = ThreadLocal.withInitial(() -> new boolean[CHUNK_SIZE * CHUNK_SIZE]);
+    private static final ThreadLocal<BlockPos.MutableBlockPos> MUTABLE = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
+    private static final ThreadLocal<MapColorSampler.FastOut> FAST_OUT = ThreadLocal.withInitial(MapColorSampler.FastOut::new);
+
     public static ChunkTile snapshot(LevelChunk chunk) {
         int cx = chunk.getPos().x();
         int cz = chunk.getPos().z();
         int minY = chunk.getMinY();
         int maxY = chunk.getMaxY() - 1;
 
-        int[] rawRgb = new int[CHUNK_SIZE * CHUNK_SIZE];
-        int[] heights = new int[CHUNK_SIZE * CHUNK_SIZE];
-        BlockPos[] poses = new BlockPos[CHUNK_SIZE * CHUNK_SIZE];
-        boolean[] transparent = new boolean[CHUNK_SIZE * CHUNK_SIZE];
+        int[] rawRgb = RAW_RGB.get();
+        int[] heights = HEIGHTS.get();
+        boolean[] transparent = TRANSPARENT.get();
         var level = chunk.getLevel();
+        var mutable = MUTABLE.get();
+        var fast = FAST_OUT.get();
 
         int globalMin = Integer.MAX_VALUE;
         int globalMax = Integer.MIN_VALUE;
@@ -33,32 +41,36 @@ public final class ChunkSnapshotter {
         for (int z = 0; z < CHUNK_SIZE; z++) {
             for (int x = 0; x < CHUNK_SIZE; x++) {
                 int idx = z * CHUNK_SIZE + x;
-                int estimated = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, x, z);
-                estimated = Math.max(minY, Math.min(maxY, estimated));
-                var s = MapColorSampler.sampleAround(chunk, x, z, estimated, 6, minY, maxY);
-                if (s.transparent()) {
-                    s = MapColorSampler.sample(chunk, x, z, maxY, minY);
-                }
-                rawRgb[idx] = s.rgb() & 0xFFFFFF;
-                heights[idx] = s.height();
-                poses[idx] = s.pos();
-                transparent[idx] = s.transparent();
-                if (!s.transparent()) {
-                    globalMin = Math.min(globalMin, s.height());
-                    globalMax = Math.max(globalMax, s.height());
+                int mapped = chunk.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, x, z);
+                int startY = mapped < minY
+                        ? MapColorSampler.sectionBasedHeight(chunk, 64)
+                        : Math.min(mapped, maxY);
+                boolean found = MapColorSampler.scanFast(chunk, x, z, startY, minY, mutable, fast);
+                if (!found) {
+                    transparent[idx] = true;
+                    heights[idx] = minY;
+                    rawRgb[idx] = 0;
+                } else {
+                    transparent[idx] = false;
+                    rawRgb[idx] = fast.rgb;
+                    heights[idx] = fast.height;
+                    globalMin = Math.min(globalMin, fast.height);
+                    globalMax = Math.max(globalMax, fast.height);
                 }
             }
         }
         if (globalMin == Integer.MAX_VALUE) globalMin = minY;
         if (globalMax == Integer.MIN_VALUE) globalMax = minY;
 
-        int[] out = new int[CHUNK_SIZE * CHUNK_SIZE];
+        int[] out = OUT.get();
         var cfg = com.auramap.client.AuraMapClient.CONFIG;
         boolean doBiomeBlend = cfg == null || cfg.biomeBlending;
         boolean doDepth = cfg == null || cfg.terrainDepth;
         boolean doShading = cfg == null || cfg.terrainShading;
         int slopeMode = doShading ? 2 : 0;
         boolean doLighting = cfg == null || cfg.lighting;
+        int baseBlockX = chunk.getPos().getMinBlockX();
+        int baseBlockZ = chunk.getPos().getMinBlockZ();
 
         for (int z = 0; z < CHUNK_SIZE; z++) {
             for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -69,15 +81,21 @@ public final class ChunkSnapshotter {
                 }
                 int base = rawRgb[idx];
                 int h = heights[idx];
-                BlockPos p = poses[idx];
 
                 int muted = ColorUtil.desaturate(base, 0.18f);
+
+                boolean needsPos = (doBiomeBlend && isVegetation(base)) || doLighting;
+                BlockPos p = null;
+                if (needsPos) {
+                    mutable.set(baseBlockX + x, h, baseBlockZ + z);
+                    p = mutable;
+                }
 
                 if (doBiomeBlend && p != null) {
                     boolean vegetative = isVegetation(base);
                     if (vegetative) {
                         var biome = level.getBiome(p).value();
-                        int tint = -1;
+                        int tint;
                         var state = chunk.getBlockState(p);
                         if (state.is(Blocks.GRASS_BLOCK) || state.is(Blocks.SHORT_GRASS) || state.is(Blocks.FERN)) {
                             tint = biome.getGrassColor(p.getX(), p.getZ());
@@ -128,7 +146,7 @@ public final class ChunkSnapshotter {
             }
         }
 
-        return new ChunkTile(cx, cz, out, globalMin, globalMax);
+        return new ChunkTile(cx, cz, out.clone(), globalMin, globalMax);
     }
 
     private static boolean isVegetation(int rgb) {

@@ -11,11 +11,20 @@ import com.mojang.blaze3d.platform.NativeImage;
 
 import java.util.BitSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public final class MapTextureCache {
+    private static final int MAX_FULL_UPLOADS_PER_FRAME = 2;
+    private static final int MAX_TILE_UPLOADS_PER_FRAME = 8;
+
     private final RegionFileStorage storage;
     private final Map<RegionPos, Entry> entries = new HashMap<>();
+    private final Set<RegionPos> pendingLoad = new HashSet<>();
+    private int fullUploadsThisFrame;
+    private int tileUploadsThisFrame;
+    private long frameId;
 
     private static class Entry {
         final DynamicTexture texture;
@@ -28,9 +37,19 @@ public final class MapTextureCache {
     }
 
     public Identifier getOrUpload(RegionPos pos) {
+        long currentFrame = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0;
         Entry e = entries.get(pos);
-        MapRegionData data = storage.getOrLoad(pos);
+        MapRegionData data = storage.getIfCached(pos);
+        if (data == null) {
+            requestLoadAsync(pos);
+            if (e != null) return e.id;
+            return placeholderId();
+        }
         if (e == null) {
+            if (fullUploadsThisFrame >= MAX_FULL_UPLOADS_PER_FRAME) {
+                return placeholderId();
+            }
+            fullUploadsThisFrame++;
             DynamicTexture tex = createTexture(data.pixels());
             Identifier id = AuraMap.id("map/r_" + pos.rx() + "_" + pos.rz());
             Minecraft.getInstance().getTextureManager().register(id, tex);
@@ -41,17 +60,46 @@ public final class MapTextureCache {
         }
         if (data.isDirty()) {
             BitSet tiles = data.consumeDirtyTiles();
-
             if (tiles != null && tiles.cardinality() < 256) {
-                updateTiles(e.texture, data.pixels(), tiles);
+                if (tileUploadsThisFrame < MAX_TILE_UPLOADS_PER_FRAME) {
+                    tileUploadsThisFrame++;
+                    updateTiles(e.texture, data.pixels(), tiles);
+                    data.clearDirty();
+                }
             } else {
-
-                updateTexture(e.texture, data.pixels());
+                if (fullUploadsThisFrame < MAX_FULL_UPLOADS_PER_FRAME) {
+                    fullUploadsThisFrame++;
+                    updateTexture(e.texture, data.pixels());
+                    data.clearDirty();
+                }
             }
-
-            data.clearDirty();
         }
         return e.id;
+    }
+
+    public void beginFrame() {
+        fullUploadsThisFrame = 0;
+        tileUploadsThisFrame = 0;
+        frameId++;
+    }
+
+    private void requestLoadAsync(RegionPos pos) {
+        synchronized (pendingLoad) {
+            if (!pendingLoad.add(pos)) return;
+        }
+        new Thread(() -> {
+            try {
+                storage.getOrLoad(pos);
+            } finally {
+                synchronized (pendingLoad) {
+                    pendingLoad.remove(pos);
+                }
+            }
+        }, "auramap-region-loader").start();
+    }
+
+    private Identifier placeholderId() {
+        return AuraMap.id("map/placeholder");
     }
 
     public void close() {
@@ -97,8 +145,8 @@ public final class MapTextureCache {
                 }
             }
             tex.upload();
-        } catch (Exception e) {
-            AuraMap.LOGGER.warn("[auramap] tile update failed", e);
+        } catch (Exception ex) {
+            AuraMap.LOGGER.warn("[auramap] tile update failed", ex);
         }
     }
 
@@ -113,8 +161,8 @@ public final class MapTextureCache {
                 }
             }
             tex.upload();
-        } catch (Exception e) {
-            AuraMap.LOGGER.warn("[auramap] texture update failed", e);
+        } catch (Exception ex) {
+            AuraMap.LOGGER.warn("[auramap] texture update failed", ex);
         }
     }
 

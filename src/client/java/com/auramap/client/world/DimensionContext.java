@@ -17,7 +17,6 @@ public final class DimensionContext {
         }
         var level = mc.level;
         if (level != null) {
-
             var ws = mc.getSingleplayerServer();
             if (ws != null) {
                 return "sp_" + ws.getWorldData().getLevelName();

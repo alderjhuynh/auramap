@@ -22,6 +22,8 @@ public final class RegionFileStorage {
 
     private final Path dimRoot;
     private final Map<RegionPos, MapRegionData> cache = new ConcurrentHashMap<>();
+    private final Map<RegionPos, Long> lastAccess = new ConcurrentHashMap<>();
+    private static final int MAX_CACHED_REGIONS = 32;
 
     public RegionFileStorage(String worldId, String dimId) {
         Path gameDir = FabricLoader.getInstance().getGameDir();
@@ -32,14 +34,37 @@ public final class RegionFileStorage {
 
     public Path dimRoot() { return dimRoot; }
 
+    public MapRegionData getIfCached(RegionPos pos) {
+        MapRegionData d = cache.get(pos);
+        if (d != null) lastAccess.put(pos, System.nanoTime());
+        return d;
+    }
+
     public MapRegionData getOrLoad(RegionPos pos) {
         MapRegionData cached = cache.get(pos);
-        if (cached != null) return cached;
+        if (cached != null) { lastAccess.put(pos, System.nanoTime()); return cached; }
         MapRegionData loaded = loadFromDisk(pos);
-        if (loaded != null) { cache.put(pos, loaded); return loaded; }
+        if (loaded != null) { cache.put(pos, loaded); lastAccess.put(pos, System.nanoTime()); evictIfNeeded(); return loaded; }
         MapRegionData fresh = new MapRegionData(pos);
         cache.put(pos, fresh);
+        lastAccess.put(pos, System.nanoTime());
+        evictIfNeeded();
         return fresh;
+    }
+
+    private void evictIfNeeded() {
+        if (cache.size() <= MAX_CACHED_REGIONS) return;
+        RegionPos oldest = null;
+        long oldestT = Long.MAX_VALUE;
+        for (Map.Entry<RegionPos, Long> e : lastAccess.entrySet()) {
+            MapRegionData d = cache.get(e.getKey());
+            if (d != null && d.isDirty()) continue;
+            if (e.getValue() < oldestT) { oldestT = e.getValue(); oldest = e.getKey(); }
+        }
+        if (oldest != null) {
+            cache.remove(oldest);
+            lastAccess.remove(oldest);
+        }
     }
 
     public void putChunkTile(int chunkX, int chunkZ, int[] tile16) {

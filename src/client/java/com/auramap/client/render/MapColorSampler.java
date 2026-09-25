@@ -14,6 +14,51 @@ public final class MapColorSampler {
         return scan(chunk, localX, localZ, topY, minY);
     }
 
+    public static boolean scanFast(LevelChunk chunk, int localX, int localZ, int topY, int minY,
+            BlockPos.MutableBlockPos mutable, FastOut out) {
+        int baseX = chunk.getPos().getMinBlockX() + localX;
+        int baseZ = chunk.getPos().getMinBlockZ() + localZ;
+        for (int y = topY; y >= minY; y--) {
+            mutable.set(baseX, y, baseZ);
+            BlockState state = chunk.getBlockState(mutable);
+            if (state.isAir()) continue;
+            int cached = com.auramap.client.cache.BlockColorCache.get(state, () -> state.getMapColor(chunk.getLevel(), mutable));
+            if (com.auramap.client.cache.BlockColorCache.isTransparent(cached)) continue;
+            out.rgb = cached & 0xFFFFFF;
+            out.height = y;
+            out.state = state;
+            return true;
+        }
+        return false;
+    }
+
+    public static final class FastOut {
+        public int rgb;
+        public int height;
+        public BlockState state;
+    }
+
+    public static int sectionBasedHeight(LevelChunk chunk, int startY) {
+        var sections = chunk.getSections();
+        if (sections.length == 0) return chunk.getMinY();
+        int chunkBottomY = chunk.getMinY();
+        int playerSection = Math.min((startY - chunkBottomY) >> 4, sections.length - 1);
+        if (playerSection < 0) playerSection = 0;
+        int result = chunkBottomY;
+        for (int i = playerSection; i < sections.length; i++) {
+            if (sections[i].hasOnlyAir()) continue;
+            result = chunkBottomY + (i << 4) + 15;
+        }
+        if (playerSection > 0 && result == chunkBottomY) {
+            for (int i = playerSection - 1; i >= 0; i--) {
+                if (sections[i].hasOnlyAir()) continue;
+                result = chunkBottomY + (i << 4) + 15;
+                break;
+            }
+        }
+        return result;
+    }
+
     public static Sample sampleAround(LevelChunk chunk, int localX, int localZ, int estimatedY, int radius, int minY, int maxY) {
         int low = Math.max(minY, estimatedY - radius);
         int high = Math.min(maxY, estimatedY + radius);

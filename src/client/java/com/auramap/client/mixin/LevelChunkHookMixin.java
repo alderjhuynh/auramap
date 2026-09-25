@@ -1,6 +1,6 @@
 package com.auramap.client.mixin;
 
-import com.auramap.client.AuraMapClient;
+import com.auramap.client.world.ChunkDirtyTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -16,7 +16,7 @@ public class LevelChunkHookMixin {
         LevelChunk self = (LevelChunk) (Object) this;
 
         if (self.getLevel() != null && self.getLevel().isClientSide()) {
-            AuraMapClient.UPDATE_QUEUE.enqueue(self);
+            ChunkDirtyTracker.markDirty(self.getPos().x(), self.getPos().z());
         }
     }
 }

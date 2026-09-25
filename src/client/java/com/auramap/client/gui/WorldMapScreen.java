@@ -11,7 +11,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.player.Player;
 import org.joml.Matrix3x2fStack;
 
 public class WorldMapScreen extends Screen {
@@ -68,8 +67,6 @@ public class WorldMapScreen extends Screen {
     }
 
     private void renderMap(GuiGraphicsExtractor g) {
-        var mc = Minecraft.getInstance();
-        Player player = mc.player;
         float scale = (float) easeOutCubic(animProgress);
         int screenCx = width / 2;
         int screenCz = height / 2;
@@ -94,6 +91,7 @@ public class WorldMapScreen extends Screen {
 
         double baseX = screenCx - centerX * zoom;
         double baseZ = screenCz - centerZ * zoom;
+        cache.beginFrame();
         for (int rz = minR.rz(); rz <= maxR.rz(); rz++) {
             for (int rx = minR.rx(); rx <= maxR.rx(); rx++) {
                 RegionPos rp = new RegionPos(rx, rz);
@@ -117,39 +115,13 @@ public class WorldMapScreen extends Screen {
             }
         }
 
-        if (player != null) {
-            double pScreenX = screenCx + (player.getX() - centerX) * zoom;
-            double pScreenZ = screenCz + (player.getZ() - centerZ) * zoom;
-            if (config.arrow) {
-                renderPlayerArrow(g, (int) pScreenX, (int) pScreenZ, player.getYRot());
-            } else {
-                g.fill((int) pScreenX - 2, (int) pScreenZ - 2, (int) pScreenX + 2, (int) pScreenZ + 2, 0xFFFF5555);
-            }
-        }
-
         if (scale != 1f) pose.popMatrix();
-    }
-
-    private void renderPlayerArrow(GuiGraphicsExtractor g, int x, int z, float yaw) {
-        int color = config.arrowColor == -2 ? 0xFFFFFFFF : (0xFF000000 | (config.arrowColor & 0xFFFFFF));
-        double rad = Math.toRadians(yaw);
-        double len = 7;
-        double w = 5;
-        int tipX = x + (int) (Math.sin(rad) * len);
-        int tipZ = z - (int) (Math.cos(rad) * len);
-        int leftX = x + (int) (Math.sin(rad + Math.toRadians(135)) * w);
-        int leftZ = z - (int) (Math.cos(rad + Math.toRadians(135)) * w);
-        int rightX = x + (int) (Math.sin(rad - Math.toRadians(135)) * w);
-        int rightZ = z - (int) (Math.cos(rad - Math.toRadians(135)) * w);
-        g.fill(tipX - 1, tipZ - 1, tipX + 1, tipZ + 1, color);
-        g.fill(leftX - 1, leftZ - 1, leftX + 1, leftZ + 1, color);
-        g.fill(rightX - 1, rightZ - 1, rightX + 1, rightZ + 1, color);
     }
 
     private void renderHud(GuiGraphicsExtractor g) {
         var mc = Minecraft.getInstance();
         var font = mc.font;
-        Player p = mc.player;
+        var p = mc.player;
         int y = 6;
         if (config.showCoordinates && p != null) {
             String coords = String.format("x: %d  z: %d  y: %d", (int) p.getX(), (int) p.getY(), (int) p.getZ());
