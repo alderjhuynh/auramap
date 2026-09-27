@@ -3,11 +3,14 @@
 
   var MAGIC = 0x4155524D;
   var MIN_ZOOM = 0.02, MAX_ZOOM = 16;
+  // Kept in sync with WaypointColor in the mod (ARGB values, alpha dropped).
+  // LIGHT_PURPLE is a legacy alias: the mod emits PURPLE for light purple.
   var WP_COLORS = {
     BLACK:"#000000", DARK_BLUE:"#0000AA", DARK_GREEN:"#00AA00", DARK_AQUA:"#00AAAA",
     DARK_RED:"#AA0000", DARK_PURPLE:"#AA00AA", GOLD:"#FFAA00", GRAY:"#AAAAAA",
     DARK_GRAY:"#555555", BLUE:"#5555FF", GREEN:"#55FF55", AQUA:"#55FFFF",
-    RED:"#FF5555", LIGHT_PURPLE:"#FF55FF", YELLOW:"#FFFF55", WHITE:"#FFFFFF"
+    RED:"#FF5555", PURPLE:"#FF55FF", LIGHT_PURPLE:"#FF55FF", YELLOW:"#FFFF55", WHITE:"#FFFFFF",
+    MAGENTA:"#FF00FF", LIGHT_BLUE:"#86B9FF", LIME:"#7CFC00", PINK:"#FFAEC9", BROWN:"#8B5A2B"
   };
 
   var landing = document.getElementById('landing');
@@ -152,8 +155,11 @@
         (data.sets||[]).forEach(function(set){
           (set.waypoints||[]).forEach(function(w){
             if (w.disabled) return;
-            out.push({name:w.name||'', initials:(w.initials||'?').slice(0,1).toUpperCase(),
-              x:w.x, z:w.z, y:w.y, color:w.color||'WHITE', set:set.name||''});
+            var nm = w.name || '';
+            var init = (w.initials || (nm ? nm.charAt(0) : '?')).slice(0, 2).toUpperCase();
+            out.push({name:nm, initials:init || '?',
+              x:w.x, z:w.z, y:w.y, yIncluded:w.yIncluded !== false,
+              color:w.color||'WHITE', kind:w.kind||'NORMAL', set:set.name||''});
           });
         });
         return out;
@@ -279,26 +285,83 @@
     updateHud();
   }
 
+  function tileRect(ox, oz, baseX, baseZ, zoom){
+    var x0 = Math.floor(baseX+ox*zoom), z0 = Math.floor(baseZ+oz*zoom);
+    var x1 = Math.floor(baseX+(ox+regionSize)*zoom), z1 = Math.floor(baseZ+(oz+regionSize)*zoom);
+    return {x0:x0, z0:z0, iw:x1-x0, ih:z1-z0};
+  }
+
+  function bannerPixel(x, y){
+    if (y === 0) return (x >= 1 && x <= 6) ? 1 : 0;
+    if (y >= 1 && y <= 5){
+      if (x === 2 || x === 5) return 1;
+      if (x === 3 || x === 4) return 2;
+      return 0;
+    }
+    if (x === 3 || x === 4) return 1;
+    return 0;
+  }
+
+  function deathPixel(x, y){
+    var m = Math.min(Math.abs(x-y), Math.abs((7-x)-y));
+    if (m > 1) return 0;
+    return m === 0 ? 2 : 1;
+  }
+
+  function drawBannerIcon(sx, sz, ps, fillCss, highlight, isDeath){
+    var x0 = sx-4*ps, top = sz-4*ps;
+    var i, j, kind;
+    if (isDeath){
+      for (j = 0; j < 8; j++){
+        for (i = 0; i < 8; i++){
+          kind = deathPixel(i, j);
+          if (!kind) continue;
+          ctx.fillStyle = kind === 1 ? '#000' : '#E02020';
+          ctx.fillRect(x0+i*ps, top+j*ps, ps, ps);
+        }
+      }
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x0, top, 8*ps, 1);
+      ctx.fillRect(x0, top+8*ps-1, 8*ps, 1);
+      return;
+    }
+    if (highlight){
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.fillRect(x0-1, top-1, 8*ps+2, 1);
+      ctx.fillRect(x0-1, top+8*ps, 8*ps+2, 1);
+      ctx.fillRect(x0-1, top, 1, 8*ps);
+      ctx.fillRect(x0+8*ps, top, 1, 8*ps);
+    }
+    for (j = 0; j < 8; j++){
+      for (i = 0; i < 8; i++){
+        kind = bannerPixel(i, j);
+        if (!kind) continue;
+        ctx.fillStyle = kind === 1 ? '#000' : fillCss;
+        ctx.fillRect(x0+i*ps, top+j*ps, ps, ps);
+      }
+    }
+  }
+
   function drawWaypoints(baseX, baseZ, w, h){
     hoveredWp = null;
     var best = 999;
     waypoints.forEach(function(wp){
-      var sx = baseX + wp.x*cam.zoom, sz = baseZ + wp.z*cam.zoom;
+      var wx = wp.x+0.5, wz = wp.z+0.5;
+      var ox = Math.floor(wp.x/regionSize)*regionSize;
+      var oz = Math.floor(wp.z/regionSize)*regionSize;
+      var tr = tileRect(ox, oz, baseX, baseZ, cam.zoom);
+      if (tr.iw <= 0 || tr.ih <= 0) return;
+      var sx = tr.x0 + ((wx-ox)/regionSize)*tr.iw;
+      var sz = tr.z0 + ((wz-oz)/regionSize)*tr.ih;
       wp.__sx = sx; wp.__sz = sz;
       if (sx < -20 || sz < -20 || sx > w+20 || sz > h+20) return;
-      ctx.beginPath();
-      ctx.arc(sx, sz, 6, 0, Math.PI*2);
-      ctx.fillStyle = WP_COLORS[wp.color] || '#ffffff';
-      ctx.fill();
-      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.stroke();
-      ctx.fillStyle = contrastText(WP_COLORS[wp.color]);
-      ctx.font = '700 9px "IBM Plex Mono", monospace';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(wp.initials, sx, sz+0.5);
+      var isDeath = wp.kind === 'DEATH';
+      drawBannerIcon(sx, sz, 2, WP_COLORS[wp.color] || '#ffffff',
+        wp.kind === 'DESTINATION', isDeath);
 
       if (mouseCss){
         var d = Math.hypot(mouseCss.x-sx, mouseCss.y-sz);
-        if (d < 10 && d < best){ best = d; hoveredWp = wp; }
+        if (d < 12 && d < best){ best = d; hoveredWp = wp; }
       }
     });
     updateTooltip();
@@ -316,7 +379,9 @@
     tooltip.style.display = 'block';
     tooltip.style.left = hoveredWp.__sx+'px';
     tooltip.style.top = hoveredWp.__sz+'px';
-    tooltip.innerHTML = '<b>'+escapeHtml(hoveredWp.name||'waypoint')+'</b> &middot; '+hoveredWp.x+', '+hoveredWp.z;
+    tooltip.innerHTML = '<b>'+escapeHtml(hoveredWp.name||'waypoint')+'</b> &middot; '+hoveredWp.x+', '+(hoveredWp.yIncluded ? hoveredWp.y+', ' : '')+hoveredWp.z
+      +escapeHtml(hoveredWp.set ? ' · '+hoveredWp.set : '')
+      +(hoveredWp.kind && hoveredWp.kind !== 'NORMAL' ? ' · '+escapeHtml(hoveredWp.kind.toLowerCase()) : '');
   }
 
   function updateHud(){
