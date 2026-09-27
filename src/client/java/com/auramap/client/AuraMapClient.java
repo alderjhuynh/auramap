@@ -7,6 +7,10 @@ import com.auramap.client.input.MapKeybindings;
 import com.auramap.client.minimap.MinimapDataStore;
 import com.auramap.client.render.MinimapRenderer;
 import com.auramap.client.storage.RegionFileStorage;
+import com.auramap.client.waypoint.WaypointManager;
+import com.auramap.client.waypoint.gui.WaypointEditScreen;
+import com.auramap.client.waypoint.gui.WaypointsScreen;
+import com.auramap.client.waypoint.render.WaypointWorldRenderer;
 import com.auramap.client.world.DimensionContext;
 import com.auramap.client.world.MapUpdateQueue;
 import net.fabricmc.api.ClientModInitializer;
@@ -32,6 +36,7 @@ public class AuraMapClient implements ClientModInitializer {
         }
         HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, AuraMap.id("minimap"),
                 MINIMAP_RENDERER);
+        WaypointWorldRenderer.register();
         UPDATE_QUEUE.setMinimapStore(MINIMAP_STORE);
         ClientTickEvents.END_CLIENT_TICK.register(this::onEndTick);
         AuraMap.LOGGER.info("[auramap] client init");
@@ -41,6 +46,8 @@ public class AuraMapClient implements ClientModInitializer {
         if (mc.player == null || mc.level == null) {
             if (currentStorage != null) {
                 UPDATE_QUEUE.flushAsyncForced();
+                WaypointManager.get().saveNow();
+                WaypointManager.get().clearContext();
                 currentStorage = null;
                 MINIMAP_STORE.clear();
                 MINIMAP_RENDERER.close();
@@ -53,9 +60,22 @@ public class AuraMapClient implements ClientModInitializer {
             UPDATE_QUEUE.setMinimapStore(MINIMAP_STORE);
             MINIMAP_STORE.clear();
             MINIMAP_RENDERER.close();
+            WaypointManager.get().setContext(currentStorage.dimRoot(), DimensionContext.worldId());
         }
         while (MapKeybindings.OPEN_MAP.consumeClick()) {
             openMap(mc);
+        }
+        while (MapKeybindings.OPEN_WAYPOINTS.consumeClick()) {
+            mc.setScreenAndShow(new WaypointsScreen(mc.gui.screen()));
+        }
+        while (MapKeybindings.ADD_WAYPOINT.consumeClick()) {
+            int x = (int) Math.floor(mc.player.getX());
+            int y = (int) Math.floor(mc.player.getY());
+            int z = (int) Math.floor(mc.player.getZ());
+            mc.setScreenAndShow(new WaypointEditScreen(mc.gui.screen(), null, x, y, z));
+        }
+        if (CONFIG.waypointDeathpoints) {
+            WaypointManager.get().tickDeathTracking(mc);
         }
         if (mc.level != null && mc.level.getGameTime() % 4 == 0) {
             sampleNearbyChunksThrottled(mc, 8);

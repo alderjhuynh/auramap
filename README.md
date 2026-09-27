@@ -23,7 +23,11 @@ A lightweight, client-side world map, focused on being fast, readable, and unobt
 - **Separate map for every world and dimension**: Overworld, Nether, and End each keep their own data, and single-player worlds and servers are kept apart. Maps are saved under `aura/auramap/`
 - **Fast and non-intrusive saves**: Uses a compact binary format that saves in the background without the long freeze on leaving a world.
 - **Map that actually looks like terrain**: Block colors, heightmap, and an attempt at looking like vanilla maps.
-- **Minimap taken directly from the worldmap**
+- **Minimap**: Live, player-centered minimap in the top-left corner, rendered directly from the same worldmap data so there's no extra exploring to do. It rotates to match your facing direction with smooth panning and zoom interpolation, auto-hides whenever a GUI screen is open, and shows nearby waypoint banners. 
+- **Waypoints**: Press `B` to open the waypoint list, `N` to create one at your current position. Each waypoint has:
+  - **Name**: Full label shown under the marker in-world, on the minimap, and with live distance on the fullscreen map.
+
+  - Color picker, coordinates + optional Y and yaw, Local/Global visibility, waypoint sets, and types. Death points are recorded automatically, waypoints render in-world with distance and height arrows, and can be shared via chat or teleported to (where permitted).
 ### Planned
 
-- **waypoints and cave view**
+- **cave view**

@@ -96,6 +96,10 @@ public final class MinimapRenderer implements HudElement {
                 pose.popMatrix();
                 g.disableScissor();
             }
+            try {
+                com.auramap.client.waypoint.render.WaypointMinimapOverlay.renderMinimapLabels(
+                        g, x0, y0, size, px, pz, yaw, zoom, radiusBlocks, ppb);
+            } catch (Throwable ignored) {}
 
             try {
                 MinimapChunkKey center = MinimapChunkKey.fromBlock(xFloored, zFloored);

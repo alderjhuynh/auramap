@@ -55,7 +55,21 @@ public class WorldMapScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
 
         g.fill(0, 0, width, height, 0xDD0A0A0A);
-        renderMap(g);
+        float scale = (float) easeOutCubic(animProgress);
+        Matrix3x2fStack pose = g.pose();
+        boolean scaled = scale != 1f;
+        if (scaled) {
+            pose.pushMatrix();
+            pose.translate(width / 2.0f, height / 2.0f);
+            pose.scale(scale, scale);
+            pose.translate(-width / 2.0f, -height / 2.0f);
+        }
+        try {
+            renderMap(g);
+            renderWaypoints(g, delta);
+        } finally {
+            if (scaled) pose.popMatrix();
+        }
         renderHud(g);
 
         super.extractRenderState(g, mouseX, mouseY, delta);
@@ -67,7 +81,6 @@ public class WorldMapScreen extends Screen {
     }
 
     private void renderMap(GuiGraphicsExtractor g) {
-        float scale = (float) easeOutCubic(animProgress);
         int screenCx = width / 2;
         int screenCz = height / 2;
 
@@ -80,14 +93,6 @@ public class WorldMapScreen extends Screen {
 
         RegionPos minR = RegionPos.fromBlock(minBlockX, minBlockZ);
         RegionPos maxR = RegionPos.fromBlock(maxBlockX, maxBlockZ);
-
-        Matrix3x2fStack pose = g.pose();
-        if (scale != 1f) {
-            pose.pushMatrix();
-            pose.translate(screenCx, screenCz);
-            pose.scale(scale, scale);
-            pose.translate(-screenCx, -screenCz);
-        }
 
         double baseX = screenCx - centerX * zoom;
         double baseZ = screenCz - centerZ * zoom;
@@ -118,8 +123,31 @@ public class WorldMapScreen extends Screen {
                 }
             }
         }
+    }
 
-        if (scale != 1f) pose.popMatrix();
+    private void renderWaypoints(GuiGraphicsExtractor g, float delta) {
+        int screenCx = width / 2;
+        int screenCz = height / 2;
+        double baseX = screenCx - centerX * zoom;
+        double baseZ = screenCz - centerZ * zoom;
+        try {
+            var mc = Minecraft.getInstance();
+            double ppx = baseX, ppy = 0, ppz = baseZ;
+            boolean hasPlayer = false;
+            if (mc.player != null) {
+                double t = Math.max(0.0, Math.min(1.0, delta));
+                ppx = Mth.lerp(t, mc.player.xo, mc.player.getX());
+                ppy = Mth.lerp(t, mc.player.yo, mc.player.getY());
+                ppz = Mth.lerp(t, mc.player.zo, mc.player.getZ());
+                hasPlayer = true;
+            }
+            if (hasPlayer) {
+                com.auramap.client.waypoint.render.WaypointMinimapOverlay.renderWorldMap(
+                        g, baseX, baseZ, zoom, width, height, ppx, ppy, ppz);
+            } else {
+                com.auramap.client.waypoint.render.WaypointMinimapOverlay.renderWorldMap(g, baseX, baseZ, zoom, width, height);
+            }
+        } catch (Throwable ignored) {}
     }
 
     private void renderHud(GuiGraphicsExtractor g) {
@@ -145,6 +173,24 @@ public class WorldMapScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean bl) {
+        if (event.button() == 1) {
+            double blockX = centerX + (event.x() - width / 2.0) / zoom;
+            double blockZ = centerZ + (event.y() - height / 2.0) / zoom;
+            var mc = Minecraft.getInstance();
+            int y = mc.player != null ? (int) mc.player.getY() : 64;
+            mc.setScreenAndShow(new com.auramap.client.waypoint.gui.WaypointEditScreen(
+                    this, null, (int) Math.floor(blockX), y, (int) Math.floor(blockZ)));
+            return true;
+        }
+        if (event.button() == 2) {
+            double blockX = centerX + (event.x() - width / 2.0) / zoom;
+            double blockZ = centerZ + (event.y() - height / 2.0) / zoom;
+            var mc = Minecraft.getInstance();
+            int y = mc.player != null ? (int) mc.player.getY() : 64;
+            com.auramap.client.waypoint.WaypointManager.get()
+                    .setTemporary((int) Math.floor(blockX), y, (int) Math.floor(blockZ), false);
+            return true;
+        }
         if (event.button() == 0) {
             dragging = true;
             dragStartX = centerX;
@@ -195,6 +241,22 @@ public class WorldMapScreen extends Screen {
         }
         if (code == 93 || code == 61 || code == 334) { zoomIn(); return true; }
         if (code == 47 || code == 45 || code == 333) { zoomOut(); return true; }
+        if (code == 66) {
+            Minecraft.getInstance().setScreenAndShow(
+                    new com.auramap.client.waypoint.gui.WaypointsScreen(this));
+            return true;
+        }
+        if (code == 78) {
+            var mc = Minecraft.getInstance();
+            int y = mc.player != null ? (int) mc.player.getY() : 64;
+            mc.setScreenAndShow(new com.auramap.client.waypoint.gui.WaypointEditScreen(
+                    this, null, (int) Math.floor(centerX), y, (int) Math.floor(centerZ)));
+            return true;
+        }
+        if (code == 84 || code == 88) {
+            com.auramap.client.waypoint.WaypointManager.get().clearTemporary();
+            return true;
+        }
         return super.keyPressed(event);
     }
 

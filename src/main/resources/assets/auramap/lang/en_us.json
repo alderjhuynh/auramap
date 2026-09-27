@@ -1,4 +1,6 @@
 {
   "key.auramap.open_map": "Open AuraMap",
+  "key.auramap.open_waypoints": "Open Waypoints",
+  "key.auramap.add_waypoint": "Add Waypoint",
   "key.category.auramap.controls": "AuraMap"
 }
